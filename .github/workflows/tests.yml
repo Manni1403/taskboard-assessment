@@ -1,0 +1,77 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install backend dependencies
+      run: cd backend && npm ci
+    
+    - name: Run unit tests
+      run: cd backend && npm test
+    
+    - name: Run E2E tests
+      run: cd backend && npm run test:e2e
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      run: cd frontend && npm ci
+    
+    - name: Install Playwright browsers
+      run: cd frontend && npx playwright install --with-deps chromium
+    
+    - name: Install backend dependencies
+      run: cd backend && npm ci
+    
+    - name: Start backend server
+      run: cd backend && npm run start:dev &
+      env:
+        DATABASE_URL: file:./dev.db
+    
+    - name: Wait for backend
+      run: npx wait-on http://localhost:3001/todos -t 30000 || true
+    
+    - name: Start frontend server
+      run: cd frontend && npm run dev &
+    
+    - name: Wait for frontend
+      run: npx wait-on http://localhost:3000 -t 30000
+    
+    - name: Run frontend tests
+      run: cd frontend && npm run test:e2e
+    
+    - name: Upload traces if failed
+      uses: actions/upload-artifact@v3
+      if: failure()
+      with:
+        name: playwright-traces
+        path: frontend/test-results/
+        retention-days: 7
